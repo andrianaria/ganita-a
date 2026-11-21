@@ -1,0 +1,31 @@
+"use client";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { ApiKeysPanel } from "./api-keys-panel";
+import { Plus, BookOpen, RefreshCw, Copy } from "lucide-react";
+import { workspace, type Language } from "../lib/workspace-client";
+import { Field, Notice, useAction, inputClass, buttonClass, secondaryClass } from "./workspace-ui";
+type Source = { id: string; name: string; type: string; status: string; lastSyncAt: string | null };
+type Job = { id: string; status: string; createdAt: string; recordsProcessed: number; errorMessage: string | null };
+export function IntegrationsWorkspace({ language }: { language: Language }) {
+  const t = (id: string, en: string) => language === "id" ? id : en, action = useAction(language);
+  const [sources, setSources] = useState<Source[]>([]), [selected, setSelected] = useState("");
+  const [jobs, setJobs] = useState<Job[]>([]), [mappings, setMappings] = useState<Array<{ id: string; externalOutletId: string; outlet: { name: string } }>>([]);
+  const [outlets, setOutlets] = useState<Array<{ id: string; name: string }>>([]), [loading, setLoading] = useState(true);
+  const load = async () => { setSources(await workspace<Source[]>("data-sources")); setOutlets(await workspace<Array<{ id: string; name: string }>>("outlets")); };
+  const detail = async (id: string) => { setJobs(await workspace<Job[]>(`data-sources/${id}/sync-jobs`)); setMappings(await workspace<typeof mappings>(`data-sources/${id}/mappings`)); };
+  useEffect(() => { load().catch(e => action.setError(e.message)).finally(() => setLoading(false)); }, []);
+  useEffect(() => { setJobs([]); setMappings([]); if (selected) void detail(selected).catch(e => action.setError(e.message)); }, [selected]);
+  const status = (v: string) => ({ CONNECTED: t("Data diterima", "Data received"), DISCONNECTED: t("Menunggu data", "Awaiting data"), ERROR: t("Perlu diperiksa", "Needs attention"), COMPLETED: t("Selesai", "Completed"), FAILED: t("Gagal", "Failed"), RUNNING: t("Diproses", "Running"), QUEUED: t("Antrean", "Queued") })[v] ?? v;
+  return <div className="space-y-6">
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-[#587068]">{t("Hubungkan sumber data penjualan dan petakan outlet sistem asal ke outlet Ganita.", "Connect sales data sources and map external outlets to Ganita outlets.")}</p><Link href="/docs/api" target="_blank" className={secondaryClass}><BookOpen size={16} />{t("Dokumentasi API", "API documentation")}</Link></div>
+    <Notice error={action.error} message={action.message} />
+    <ApiKeysPanel language={language} onCreated={async id => { await load(); setSelected(id); }} />
+    {loading ? <p role="status">{t("Memuat...", "Loading...")}</p> : <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr className="border-b text-[#587068]"><th className="p-3">{t("Sumber", "Source")}</th><th className="p-3">Status</th><th className="p-3">{t("Penerimaan terakhir", "Last received")}</th><th className="p-3">ID</th></tr></thead><tbody>{sources.map(source => <tr key={source.id} className={`border-b ${selected === source.id ? "bg-[#e4f8f1]" : ""}`}><td className="p-3"><button onClick={() => setSelected(source.id)} className="font-semibold text-[#087968] underline">{source.name}</button></td><td className="p-3">{status(source.status)}</td><td className="p-3">{source.lastSyncAt ? new Date(source.lastSyncAt).toLocaleString(language === "id" ? "id-ID" : "en-US") : "-"}</td><td className="p-3"><button title={t("Salin ID sumber data", "Copy data source ID")} className="flex items-center gap-2 font-mono text-xs" onClick={() => void action.run(() => navigator.clipboard.writeText(source.id))}>{source.id}<Copy size={14} /></button></td></tr>)}</tbody></table>{!sources.length && <p className="py-5 text-sm">{t("Belum ada sumber data.", "No data sources yet.")}</p>}</div>}
+    {selected && <section className="space-y-4 border-b pb-6"><div className="flex justify-between"><h2 className="font-semibold">{t("Pemetaan outlet", "Outlet mapping")}</h2><button title={t("Muat ulang riwayat", "Refresh history")} className={secondaryClass} onClick={() => void action.run(async () => { await load(); await detail(selected); })}><RefreshCw size={16} /></button></div>
+      <form className="flex flex-wrap items-end gap-3" onSubmit={e => { e.preventDefault(); const body = Object.fromEntries(new FormData(e.currentTarget)); void action.run(async () => { await workspace(`data-sources/${selected}/mappings`, "POST", body); await detail(selected); }); }}><Field label={t("ID outlet di sistem asal", "External outlet ID")}><input required name="externalOutletId" className={inputClass} /></Field><Field label={t("Outlet Ganita", "Ganita outlet")}><select name="outletId" required className={inputClass}><option value="">{t("Pilih outlet", "Select outlet")}</option>{outlets.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></Field><button disabled={action.busy} className={buttonClass}><Plus size={16} />{t("Petakan", "Map outlet")}</button></form>
+      {mappings.map(m => <p className="border-b py-2 text-sm" key={m.id}>{m.externalOutletId} → {m.outlet.name}</p>)}
+      <h2 className="pt-4 font-semibold">{t("Riwayat pemrosesan", "Processing history")}</h2>{!jobs.length && <p className="text-sm text-[#587068]">{t("Belum ada pekerjaan pemrosesan data.", "No processing jobs yet.")}</p>}{jobs.map(job => <div key={job.id} className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm"><div><p>{new Date(job.createdAt).toLocaleString(language === "id" ? "id-ID" : "en-US")} · {status(job.status)}</p><p className="text-xs text-[#587068]">{job.recordsProcessed} {t("catatan diproses", "records processed")}</p>{job.errorMessage && <p className="text-red-700">{job.errorMessage}</p>}</div>{job.status === "FAILED" && <button disabled={action.busy} className={secondaryClass} onClick={() => void action.run(async () => { await workspace(`data-sources/${selected}/jobs/${job.id}/retry`, "POST", {}); await detail(selected); })}><RefreshCw size={16} />{t("Ulangi perhitungan", "Retry calculation")}</button>}</div>)}
+    </section>}
+  </div>;
+}

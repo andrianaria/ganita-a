@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@ganita-ai/config": ["packages/config/src/index.ts"],
+      "@ganita-ai/connectors-core": ["packages/connectors/core/src/index.ts"],
+      "@ganita-ai/connectors-csv": ["packages/connectors/csv/src/index.ts"],
+      "@ganita-ai/connectors-ganita-pos": ["packages/connectors/ganita-pos/src/index.ts"],
+      "@ganita-ai/connectors-street-sushi": ["packages/connectors/street-sushi/src/index.ts"],
+      "@ganita-ai/database": ["packages/database/src/index.ts"],
+      "@ganita-ai/domain": ["packages/domain/src/index.ts"],
+      "@ganita-ai/health-engine": ["packages/health-engine/src/index.ts"],
+      "@ganita-ai/insights": ["packages/insights/src/index.ts"],
+      "@ganita-ai/normalization": ["packages/normalization/src/index.ts"],
+      "@ganita-ai/shared": ["packages/shared/src/index.ts"],
+      "@ganita-ai/types": ["packages/types/src/index.ts"]
+    }
+  }
+}

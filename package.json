@@ -1,0 +1,44 @@
+{
+  "name": "ganita-a",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Restaurant operations and financial health workspace",
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "dev:local": "node scripts/start-local.mjs",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run --config vitest.unit.config.ts",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "test:watch": "vitest --config vitest.unit.config.ts",
+    "test:coverage": "vitest run --config vitest.unit.config.ts --coverage",
+    "test:integration": "node scripts/test-regressions.mjs",
+    "test:browser": "playwright test",
+    "db:backup": "node scripts/database-backup.mjs backup",
+    "db:restore:test": "node scripts/database-backup.mjs restore-test",
+    "ops:check": "node scripts/check-services.mjs",
+    "test:all": "pnpm test:coverage && pnpm test:integration && pnpm test:browser",
+    "check": "pnpm -r --if-present typecheck && pnpm test:coverage",
+    "test:regressions": "node scripts/test-regressions.mjs",
+    "db:generate": "pnpm --filter @ganita-ai/database db:generate",
+    "db:migrate": "pnpm --filter @ganita-ai/database db:migrate",
+    "db:deploy": "pnpm --filter @ganita-ai/database db:deploy",
+    "db:seed": "pnpm --filter @ganita-ai/database db:seed",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.10.5",
+    "@vitest/coverage-v8": "2.1.9",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  }
+}

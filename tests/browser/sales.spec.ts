@@ -1,0 +1,92 @@
+import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+
+const header = "transaction_id,outlet_code,date,product,quantity,gross_sales,discount,net_sales,cost\n";
+const row = "T1,A,2026-09-19T12:00:00+07:00,Sushi,2,100000,0,100000,40000";
+async function sales(page: Page, many = false) {
+  await page.route("**/api/**", route => route.fulfill({ json: { data: [] } }));
+  await page.route("**/api/workspace/outlets", route => route.fulfill({ json: { data: [{ id: "a", code: "A", name: "Outlet A" }, { id: "b", code: "B", name: "Outlet B" }] } }));
+  await page.goto(`/test-ui/${many ? "?many=1" : ""}`);
+  if (await page.getByRole("button", { name: "Buka menu", exact: true }).isVisible()) await page.getByRole("button", { name: "Buka menu", exact: true }).click();
+  await page.getByRole("button", { name: "Penjualan", exact: true }).first().click();
+}
+test("sales import stays in a dialog, template downloads and cancellation preserves list", async ({ page }, testInfo) => {
+  await sales(page);
+  await expect(page.getByLabel("Berkas CSV")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Daftar penjualan" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("sales-list.png"), fullPage: true });
+  await page.getByRole("button", { name: "Impor data penjualan", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  const download = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Unduh template CSV" }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe("ganita-template-penjualan.csv");
+  expect(await readFile((await file.path())!, "utf8")).toContain("transaction_id,outlet_code,date,product");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Daftar penjualan" }).getByRole("row")).toHaveCount(3);
+});
+test("multi-outlet preview blocks unknown outlets then supports failed import and retry", async ({ page }, testInfo) => {
+  await sales(page);
+  let requests = 0;
+  await page.route("**/api/import/csv", async route => {
+    requests++;
+    expect(route.request().postDataJSON().rows).toHaveLength(2);
+    await route.fulfill(requests === 1 ? { status: 503, json: { error: { message: "Server sibuk. Coba lagi." } } } : { status: 201, json: { data: { imported: 2 } } });
+  });
+  await page.getByRole("button", { name: "Impor data penjualan", exact: true }).click();
+  const file = page.getByLabel("Berkas CSV"), confirm = page.getByRole("button", { name: "Konfirmasi impor" });
+  await file.setInputFiles({ name: "unknown.csv", mimeType: "text/csv", buffer: Buffer.from(header + row.replace(",A,", ",UNKNOWN,")) });
+  await expect(page.getByRole("alert")).toContainText("kode outlet belum dikenal");
+  await expect(confirm).toBeDisabled(); expect(requests).toBe(0);
+  await file.setInputFiles({ name: "valid.csv", mimeType: "text/csv", buffer: Buffer.from(header + row + "\n" + row.replace(",A,", ",B,")) });
+  await expect(confirm).toBeEnabled();
+  await expect(page.getByRole("dialog")).toContainText("2 transaksi · 2 outlet");
+  await page.screenshot({ path: testInfo.outputPath("sales-import-preview.png"), fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await confirm.click();
+  await expect(page.getByRole("alert")).toHaveText("Server sibuk. Coba lagi.");
+  await expect(page.getByRole("dialog")).toContainText("valid.csv");
+  await confirm.click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: "2 transaksi diproses" })).toBeVisible();
+});
+test("120 outlets are searchable, paginated and selectable without a long sales list", async ({ page }, testInfo) => {
+  await sales(page, true);
+  const list = page.getByRole("region", { name: "Daftar penjualan" });
+  await expect(list.getByRole("row")).toHaveCount(26);
+  await expect(list).toContainText("1–25 dari 120 outlet");
+  await list.getByRole("button", { name: "Halaman berikutnya" }).click();
+  await expect(list).toContainText("26–50 dari 120 outlet");
+  await page.getByLabel("Cari outlet pada daftar penjualan").fill("O-119");
+  await expect(list.getByRole("row")).toHaveCount(2);
+  await expect(list).toContainText("Outlet 119");
+  await page.getByLabel("Cari outlet pada daftar penjualan").fill("no-match");
+  await expect(list).toContainText("Tidak ada outlet yang sesuai.");
+  await page.getByLabel("Cari outlet pada daftar penjualan").fill("");
+  await page.getByLabel("Baris per halaman").selectOption("50");
+  await expect(list.getByRole("row")).toHaveCount(51);
+  await page.getByRole("button", { name: "Per hari", exact: true }).click();
+  await expect(list.getByRole("row")).toHaveCount(2);
+  await page.getByLabel("Cari pilihan outlet").fill("O-119");
+  await page.getByLabel("Pilih outlet", { exact: true }).selectOption("outlet-119");
+  await page.getByRole("button", { name: "Per outlet", exact: true }).click();
+  await expect(list.getByRole("row")).toHaveCount(2);
+  await expect(list).toContainText("Outlet 119");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("sales-many-outlets.png"), fullPage: true });
+});
+test("outlet lookup failures block upload and can be retried", async ({ page }) => {
+  await sales(page);
+  let calls = 0;
+  await page.route("**/api/workspace/outlets", route => route.fulfill(++calls === 1 ? { status: 503, json: {} } : { json: { data: [{ id: "a", code: "A", name: "Outlet A" }] } }));
+  await page.getByRole("button", { name: "Impor data penjualan", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText("Daftar outlet gagal dimuat.");
+  await expect(page.getByLabel("Berkas CSV")).toBeDisabled();
+  await page.getByRole("button", { name: "Coba lagi" }).click();
+  await expect(page.getByLabel("Berkas CSV")).toBeEnabled();
+  await page.getByLabel("Berkas CSV").setInputFiles({ name: "bad.csv", mimeType: "text/csv", buffer: Buffer.from("invalid") });
+  await expect(page.getByRole("button", { name: "Konfirmasi impor" })).toBeDisabled();
+  await expect(page.getByRole("alert")).toBeVisible();
+});

@@ -1,0 +1,850 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MANAGER
+  VIEWER
+}
+
+enum OutletStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum DataSourceType {
+  STREET_SUSHI_POS
+  GANITA_POS
+  CSV
+  OTHER
+}
+
+enum DataSourceStatus {
+  CONNECTED
+  ERROR
+  DISCONNECTED
+}
+
+enum ExpenseCategory {
+  RENT
+  SALARY
+  UTILITY
+  MARKETING
+  DELIVERY_PLATFORM
+  MAINTENANCE
+  SUPPLIES
+  OTHER
+}
+
+enum HealthStatus {
+  HEALTHY
+  ATTENTION
+  WARNING
+  CRITICAL
+}
+
+enum HealthIssueType {
+  HIGH_HPP
+  HIGH_OPEX
+  SALES_DECLINE
+  EXCESSIVE_DISCOUNT
+  MARGIN_DECLINE
+  HIGH_LABOR_COST
+  INVENTORY_ANOMALY
+  LOW_AVERAGE_ORDER
+}
+
+enum IssueSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum IssueStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum SyncJobType {
+  INITIAL_IMPORT
+  INCREMENTAL_SYNC
+  TRANSACTION_IMPORT
+}
+
+enum SyncJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum StockLocationType {
+  OUTLET
+  WAREHOUSE
+  COMMISSARY
+  VIRTUAL
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE_USAGE
+  WASTE
+  TRANSFER_IN
+  TRANSFER_OUT
+  ADJUSTMENT
+  PRODUCTION
+  RETURN
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum MappedEntityType {
+  OUTLET
+  PRODUCT
+  INGREDIENT
+  SUPPLIER
+  RECIPE
+  STOCK_LOCATION
+}
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  businessType String? @map("business_type")
+  timezone  String   @default("Asia/Jakarta")
+  currency  String   @default("IDR")
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  brands             Brand[]
+  apiKeys            ApiKey[]
+  dataSources        DataSource[]
+  entityMappings     ExternalEntityMapping[]
+  expenses           Expense[]
+  healthIssues       HealthIssue[]
+  healthSnapshots    OutletHealthSnapshot[]
+  insights           Insight[]
+  memberships        OrganizationUser[]
+  metrics            DailyOutletMetric[]
+  outlets            Outlet[]
+  outletDataSources  OutletDataSource[]
+  products           Product[]
+  ingredients        Ingredient[]
+  purchaseOrders     PurchaseOrder[]
+  purchaseOrderItems PurchaseOrderItem[]
+  recipes            Recipe[]
+  recipeItems        RecipeItem[]
+  stockBalances      StockBalance[]
+  stockLocations     StockLocation[]
+  stockMovements     StockMovement[]
+  suppliers          Supplier[]
+  syncJobs           SyncJob[]
+  transactions       Transaction[]
+  transactionItems   TransactionItem[]
+  invitations        TeamInvitation[]
+  inspections        Inspection[]
+  treatments         Treatment[]
+  generations        AssistantGeneration[]
+
+  @@map("organizations")
+}
+
+model ApiKey {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  dataSourceId   String?   @map("data_source_id") @db.Uuid
+  name           String
+  keyPrefix      String    @map("key_prefix")
+  keyHash        String    @unique @map("key_hash")
+  scopes         String[]
+  lastUsedAt     DateTime? @map("last_used_at") @db.Timestamptz(6)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dataSource   DataSource? @relation(fields: [dataSourceId, organizationId], references: [id, organizationId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([organizationId, revokedAt])
+  @@index([dataSourceId, organizationId])
+  @@map("api_keys")
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique
+  name         String
+  passwordHash String     @map("password_hash")
+  authVersion  Int        @default(0) @map("auth_version")
+  clerkUserId  String?    @unique @map("clerk_user_id")
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  memberships OrganizationUser[]
+
+  @@map("users")
+}
+
+model OrganizationUser {
+  organizationId String           @map("organization_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  role           OrganizationRole
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, userId])
+  @@index([userId])
+  @@map("organization_users")
+}
+
+model Brand {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  slug           String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlets      Outlet[]
+  products     Product[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+  @@map("brands")
+}
+
+model Outlet {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  brandId        String       @map("brand_id") @db.Uuid
+  externalId     String?      @map("external_id")
+  name           String
+  code           String
+  address        String?
+  city           String?
+  country        String?
+  phone          String?
+  email          String?
+  notes          String?
+  openingHours   Json         @default("[]") @map("opening_hours")
+  profileManagedLocally Boolean @default(false) @map("profile_managed_locally")
+  timezone       String       @default("Asia/Jakarta")
+  status         OutletStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  brand            Brand                  @relation(fields: [brandId], references: [id], onDelete: Restrict)
+  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  dataSourceLinks  OutletDataSource[]
+  expenses         Expense[]
+  healthIssues     HealthIssue[]
+  healthSnapshots  OutletHealthSnapshot[]
+  insights         Insight[]
+  metrics          DailyOutletMetric[]
+  purchaseOrders   PurchaseOrder[]
+  stockLocations   StockLocation[]
+  stockMovements   StockMovement[]
+  transactions     Transaction[]
+  transactionItems TransactionItem[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@index([brandId])
+  @@map("outlets")
+}
+
+model TeamInvitation {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  email          String
+  role           OrganizationRole
+  tokenHash      String @unique @map("token_hash")
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(6)
+  acceptedAt     DateTime? @map("accepted_at") @db.Timestamptz(6)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, email])
+  @@map("team_invitations")
+}
+
+model AssistantGeneration {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+  outletId       String? @map("outlet_id") @db.Uuid
+  prompt         String
+  language       String
+  result         String?
+  evidence       Json
+  model          String
+  status         String @default("PENDING")
+  usage          Json?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, userId, createdAt])
+  @@map("assistant_generations")
+}
+
+model Inspection {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  outletId       String? @map("outlet_id") @db.Uuid
+  result         Json
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, outletId, createdAt])
+  @@map("inspections")
+}
+
+model Treatment {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  outletId       String @map("outlet_id") @db.Uuid
+  title          String
+  status         String @default("PLANNED")
+  resultNote     String? @map("result_note")
+  baseline       Json
+  outcome        Json?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, outletId])
+  @@map("treatments")
+}
+
+model DataSource {
+  id                  String           @id @default(uuid()) @db.Uuid
+  organizationId      String           @map("organization_id") @db.Uuid
+  type                DataSourceType
+  name                String
+  status              DataSourceStatus @default(DISCONNECTED)
+  connectionSecretRef String?          @map("connection_secret_ref")
+  lastSyncAt          DateTime?        @map("last_sync_at") @db.Timestamptz(6)
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization   Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entityMappings ExternalEntityMapping[]
+  outletLinks    OutletDataSource[]
+  expenses       Expense[]
+  products       Product[]
+  ingredients    Ingredient[]
+  stockMovements StockMovement[]
+  suppliers      Supplier[]
+  syncJobs       SyncJob[]
+  transactions   Transaction[]
+  apiKeys        ApiKey[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId])
+  @@map("data_sources")
+}
+
+model OutletDataSource {
+  id               String @id @default(uuid()) @db.Uuid
+  organizationId   String @map("organization_id") @db.Uuid
+  outletId         String @map("outlet_id") @db.Uuid
+  dataSourceId     String @map("data_source_id") @db.Uuid
+  externalOutletId String @map("external_outlet_id")
+
+  dataSource   DataSource   @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet       Outlet       @relation(fields: [outletId], references: [id], onDelete: Cascade)
+
+  @@unique([dataSourceId, externalOutletId])
+  @@index([organizationId, outletId])
+  @@map("outlet_data_sources")
+}
+
+model Transaction {
+  id                String   @id @default(uuid()) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  outletId          String   @map("outlet_id") @db.Uuid
+  dataSourceId      String   @map("data_source_id") @db.Uuid
+  externalId        String   @map("external_id")
+  transactionNumber String?  @map("transaction_number")
+  occurredAt        DateTime @map("occurred_at") @db.Timestamptz(6)
+  grossSales        Decimal  @map("gross_sales") @db.Decimal(18, 2)
+  discountAmount    Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  serviceCharge     Decimal  @default(0) @map("service_charge") @db.Decimal(18, 2)
+  taxAmount         Decimal  @default(0) @map("tax_amount") @db.Decimal(18, 2)
+  netSales          Decimal  @map("net_sales") @db.Decimal(18, 2)
+  totalCost         Decimal? @map("total_cost") @db.Decimal(18, 2)
+  paymentMethod     String?  @map("payment_method")
+  status            String
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  dataSource       DataSource        @relation(fields: [dataSourceId], references: [id], onDelete: Restrict)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet           Outlet            @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  transactionItems TransactionItem[]
+
+  @@unique([dataSourceId, outletId, externalId])
+  @@index([organizationId])
+  @@index([outletId, occurredAt])
+  @@index([organizationId, outletId, occurredAt])
+  @@map("transactions")
+}
+
+model TransactionItem {
+  id                  String   @id @default(uuid()) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  outletId            String   @map("outlet_id") @db.Uuid
+  transactionId       String   @map("transaction_id") @db.Uuid
+  externalId          String?  @map("external_id")
+  productId           String?  @map("product_id") @db.Uuid
+  productNameSnapshot String   @map("product_name_snapshot")
+  quantity            Decimal  @db.Decimal(18, 4)
+  unitPrice           Decimal  @map("unit_price") @db.Decimal(18, 2)
+  grossAmount         Decimal  @map("gross_amount") @db.Decimal(18, 2)
+  discountAmount      Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  netAmount           Decimal  @map("net_amount") @db.Decimal(18, 2)
+  unitCost            Decimal? @map("unit_cost") @db.Decimal(18, 4)
+  totalCost           Decimal? @map("total_cost") @db.Decimal(18, 2)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet       Outlet       @relation(fields: [outletId], references: [id], onDelete: Restrict)
+  product      Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+  transaction  Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([outletId])
+  @@index([transactionId])
+  @@map("transaction_items")
+}
+
+model Product {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  brandId        String?  @map("brand_id") @db.Uuid
+  dataSourceId   String?  @map("data_source_id") @db.Uuid
+  externalId     String?  @map("external_id")
+  name           String
+  sku            String?
+  category       String?
+  sellingPrice   Decimal? @map("selling_price") @db.Decimal(18, 2)
+  estimatedCost  Decimal? @map("estimated_cost") @db.Decimal(18, 4)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  brand            Brand?            @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  dataSource       DataSource?       @relation(fields: [dataSourceId], references: [id], onDelete: SetNull)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recipes          Recipe[]
+  recipeItems      RecipeItem[]
+  transactionItems TransactionItem[]
+
+  @@unique([dataSourceId, externalId])
+  @@index([organizationId])
+  @@map("products")
+}
+
+model Ingredient {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  dataSourceId   String?  @map("data_source_id") @db.Uuid
+  externalId     String?  @map("external_id")
+  name           String
+  unit           String
+  currentCost    Decimal  @map("current_cost") @db.Decimal(18, 4)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  dataSource         DataSource?         @relation(fields: [dataSourceId], references: [id], onDelete: SetNull)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseOrderItems PurchaseOrderItem[]
+  recipeItems        RecipeItem[]
+  stockBalances      StockBalance[]
+  stockMovements     StockMovement[]
+
+  @@unique([dataSourceId, externalId])
+  @@index([organizationId])
+  @@map("ingredients")
+}
+
+model RecipeItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String  @map("organization_id") @db.Uuid
+  recipeId       String? @map("recipe_id") @db.Uuid
+  productId      String  @map("product_id") @db.Uuid
+  ingredientId   String  @map("ingredient_id") @db.Uuid
+  quantity       Decimal @db.Decimal(18, 4)
+  unit           String
+  estimatedCost  Decimal @map("estimated_cost") @db.Decimal(18, 4)
+
+  ingredient   Ingredient   @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  recipe       Recipe?      @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([productId])
+  @@index([recipeId])
+  @@map("recipe_items")
+}
+
+model Recipe {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  version        Int      @default(1)
+  name           String
+  yieldQuantity  Decimal  @default(1) @map("yield_quantity") @db.Decimal(18, 4)
+  yieldUnit      String   @default("portion") @map("yield_unit")
+  active         Boolean  @default(true)
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  items        RecipeItem[]
+
+  @@unique([productId, version])
+  @@index([organizationId])
+  @@map("recipes")
+}
+
+model Supplier {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  dataSourceId   String?  @map("data_source_id") @db.Uuid
+  externalId     String?  @map("external_id")
+  name           String
+  contactName    String?  @map("contact_name")
+  phone          String?
+  email          String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  dataSource     DataSource?     @relation(fields: [dataSourceId], references: [id], onDelete: SetNull)
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([dataSourceId, externalId])
+  @@index([organizationId])
+  @@map("suppliers")
+}
+
+model StockLocation {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  outletId       String?           @map("outlet_id") @db.Uuid
+  externalId     String?           @map("external_id")
+  name           String
+  type           StockLocationType
+  active         Boolean           @default(true)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet       Outlet?         @relation(fields: [outletId], references: [id], onDelete: SetNull)
+  balances     StockBalance[]
+  movements    StockMovement[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([outletId])
+  @@map("stock_locations")
+}
+
+model StockBalance {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  stockLocationId  String   @map("stock_location_id") @db.Uuid
+  ingredientId     String   @map("ingredient_id") @db.Uuid
+  onHandQuantity   Decimal  @default(0) @map("on_hand_quantity") @db.Decimal(18, 4)
+  reservedQuantity Decimal  @default(0) @map("reserved_quantity") @db.Decimal(18, 4)
+  parLevel         Decimal? @map("par_level") @db.Decimal(18, 4)
+  reorderPoint     Decimal? @map("reorder_point") @db.Decimal(18, 4)
+  unit             String
+  averageUnitCost  Decimal? @map("average_unit_cost") @db.Decimal(18, 4)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  ingredient    Ingredient    @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stockLocation StockLocation @relation(fields: [stockLocationId], references: [id], onDelete: Cascade)
+
+  @@unique([stockLocationId, ingredientId])
+  @@index([organizationId])
+  @@index([ingredientId])
+  @@map("stock_balances")
+}
+
+model StockMovement {
+  id              String            @id @default(uuid()) @db.Uuid
+  organizationId  String            @map("organization_id") @db.Uuid
+  outletId        String?           @map("outlet_id") @db.Uuid
+  stockLocationId String            @map("stock_location_id") @db.Uuid
+  ingredientId    String            @map("ingredient_id") @db.Uuid
+  dataSourceId    String?           @map("data_source_id") @db.Uuid
+  externalId      String?           @map("external_id")
+  type            StockMovementType
+  occurredAt      DateTime          @map("occurred_at") @db.Timestamptz(6)
+  quantity        Decimal           @db.Decimal(18, 4)
+  unit            String
+  unitCost        Decimal?          @map("unit_cost") @db.Decimal(18, 4)
+  totalCost       Decimal?          @map("total_cost") @db.Decimal(18, 2)
+  referenceType   String?           @map("reference_type")
+  referenceId     String?           @map("reference_id")
+  reason          String?
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  dataSource    DataSource?   @relation(fields: [dataSourceId], references: [id], onDelete: SetNull)
+  ingredient    Ingredient    @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet        Outlet?       @relation(fields: [outletId], references: [id], onDelete: SetNull)
+  stockLocation StockLocation @relation(fields: [stockLocationId], references: [id], onDelete: Restrict)
+
+  @@unique([dataSourceId, externalId])
+  @@index([organizationId])
+  @@index([stockLocationId, occurredAt])
+  @@index([ingredientId, occurredAt])
+  @@map("stock_movements")
+}
+
+model PurchaseOrder {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  outletId       String?             @map("outlet_id") @db.Uuid
+  supplierId     String?             @map("supplier_id") @db.Uuid
+  orderNumber    String?             @map("order_number")
+  status         PurchaseOrderStatus @default(DRAFT)
+  orderedAt      DateTime?           @map("ordered_at") @db.Timestamptz(6)
+  expectedAt     DateTime?           @map("expected_at") @db.Timestamptz(6)
+  receivedAt     DateTime?           @map("received_at") @db.Timestamptz(6)
+  totalAmount    Decimal             @default(0) @map("total_amount") @db.Decimal(18, 2)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet       Outlet?             @relation(fields: [outletId], references: [id], onDelete: SetNull)
+  supplier     Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  items        PurchaseOrderItem[]
+
+  @@unique([organizationId, orderNumber])
+  @@index([organizationId])
+  @@index([supplierId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id               String  @id @default(uuid()) @db.Uuid
+  organizationId   String  @map("organization_id") @db.Uuid
+  purchaseOrderId  String  @map("purchase_order_id") @db.Uuid
+  ingredientId     String  @map("ingredient_id") @db.Uuid
+  quantityOrdered  Decimal @map("quantity_ordered") @db.Decimal(18, 4)
+  quantityReceived Decimal @default(0) @map("quantity_received") @db.Decimal(18, 4)
+  unit             String
+  unitCost         Decimal @map("unit_cost") @db.Decimal(18, 4)
+  totalCost        Decimal @map("total_cost") @db.Decimal(18, 2)
+
+  ingredient    Ingredient    @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([purchaseOrderId])
+  @@index([ingredientId])
+  @@map("purchase_order_items")
+}
+
+model ExternalEntityMapping {
+  id              String           @id @default(uuid()) @db.Uuid
+  organizationId  String           @map("organization_id") @db.Uuid
+  dataSourceId    String           @map("data_source_id") @db.Uuid
+  entityType      MappedEntityType @map("entity_type")
+  externalId      String           @map("external_id")
+  canonicalId     String           @map("canonical_id") @db.Uuid
+  externalPayload Json?            @map("external_payload")
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  dataSource   DataSource   @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([dataSourceId, entityType, externalId])
+  @@index([organizationId, entityType, canonicalId])
+  @@map("external_entity_mappings")
+}
+
+model Expense {
+  id             String          @id @default(uuid()) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  outletId       String          @map("outlet_id") @db.Uuid
+  dataSourceId   String?         @map("data_source_id") @db.Uuid
+  externalId     String?         @map("external_id")
+  expenseDate    DateTime        @map("expense_date") @db.Date
+  category       ExpenseCategory
+  amount         Decimal         @db.Decimal(18, 2)
+  description    String?
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  dataSource   DataSource?  @relation(fields: [dataSourceId], references: [id], onDelete: SetNull)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet       Outlet       @relation(fields: [outletId], references: [id], onDelete: Restrict)
+
+  @@unique([dataSourceId, externalId])
+  @@index([organizationId])
+  @@index([outletId, expenseDate])
+  @@map("expenses")
+}
+
+model DailyOutletMetric {
+  id                    String   @id @default(uuid()) @db.Uuid
+  organizationId        String   @map("organization_id") @db.Uuid
+  outletId              String   @map("outlet_id") @db.Uuid
+  metricDate            DateTime @map("metric_date") @db.Date
+  grossSales            Decimal  @default(0) @map("gross_sales") @db.Decimal(18, 2)
+  netSales              Decimal  @default(0) @map("net_sales") @db.Decimal(18, 2)
+  transactionCount      Int      @default(0) @map("transaction_count")
+  costComplete          Boolean  @default(false) @map("cost_complete")
+  opexComplete          Boolean  @default(false) @map("opex_complete")
+  averageOrderValue     Decimal  @default(0) @map("average_order_value") @db.Decimal(18, 2)
+  cogs                  Decimal  @default(0) @db.Decimal(18, 2)
+  hppPercentage         Decimal  @default(0) @map("hpp_percentage") @db.Decimal(8, 4)
+  opex                  Decimal  @default(0) @db.Decimal(18, 2)
+  opexPercentage        Decimal  @default(0) @map("opex_percentage") @db.Decimal(8, 4)
+  grossProfit           Decimal  @default(0) @map("gross_profit") @db.Decimal(18, 2)
+  grossMarginPercentage Decimal  @default(0) @map("gross_margin_percentage") @db.Decimal(8, 4)
+  discountAmount        Decimal  @default(0) @map("discount_amount") @db.Decimal(18, 2)
+  discountPercentage    Decimal  @default(0) @map("discount_percentage") @db.Decimal(8, 4)
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet       Outlet       @relation(fields: [outletId], references: [id], onDelete: Cascade)
+
+  @@unique([outletId, metricDate])
+  @@index([organizationId])
+  @@index([organizationId, outletId, metricDate])
+  @@map("daily_outlet_metrics")
+}
+
+model OutletHealthSnapshot {
+  id                  String       @id @default(uuid()) @db.Uuid
+  organizationId      String       @map("organization_id") @db.Uuid
+  outletId            String       @map("outlet_id") @db.Uuid
+  snapshotDate        DateTime     @map("snapshot_date") @db.Date
+  healthPolicyVersion String       @default("mvp-v1") @map("health_policy_version")
+  overallScore        Int          @map("overall_score")
+  revenueScore        Int          @map("revenue_score")
+  marginScore         Int          @map("margin_score")
+  costScore           Int          @map("cost_score")
+  operationsScore     Int          @map("operations_score")
+  inventoryScore      Int?         @map("inventory_score")
+  status              HealthStatus
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet       Outlet        @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  issues       HealthIssue[]
+
+  @@unique([outletId, snapshotDate])
+  @@index([organizationId])
+  @@map("outlet_health_snapshots")
+}
+
+model HealthIssue {
+  id                      String          @id @default(uuid()) @db.Uuid
+  organizationId          String          @map("organization_id") @db.Uuid
+  outletId                String          @map("outlet_id") @db.Uuid
+  snapshotId              String?         @map("snapshot_id") @db.Uuid
+  type                    HealthIssueType
+  severity                IssueSeverity
+  title                   String
+  description             String
+  metricName              String          @map("metric_name")
+  currentValue            Decimal?        @map("current_value") @db.Decimal(18, 4)
+  previousValue           Decimal?        @map("previous_value") @db.Decimal(18, 4)
+  targetValue             Decimal?        @map("target_value") @db.Decimal(18, 4)
+  financialImpactEstimate Decimal?        @map("financial_impact_estimate") @db.Decimal(18, 2)
+  detectedAt              DateTime        @default(now()) @map("detected_at") @db.Timestamptz(6)
+  resolvedAt              DateTime?       @map("resolved_at") @db.Timestamptz(6)
+  status                  IssueStatus     @default(OPEN)
+
+  insights     Insight[]
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet       Outlet                @relation(fields: [outletId], references: [id], onDelete: Cascade)
+  snapshot     OutletHealthSnapshot? @relation(fields: [snapshotId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([outletId, status])
+  @@index([snapshotId])
+  @@map("health_issues")
+}
+
+model Insight {
+  id                     String   @id @default(uuid()) @db.Uuid
+  organizationId         String   @map("organization_id") @db.Uuid
+  outletId               String   @map("outlet_id") @db.Uuid
+  healthIssueId          String   @map("health_issue_id") @db.Uuid
+  summary                String
+  explanation            String
+  recommendedActionsJson Json     @map("recommended_actions_json")
+  modelProvider          String   @map("model_provider")
+  modelName              String   @map("model_name")
+  promptVersion          String   @map("prompt_version")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  healthIssue  HealthIssue  @relation(fields: [healthIssueId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outlet       Outlet       @relation(fields: [outletId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([outletId])
+  @@map("insights")
+}
+
+model SyncJob {
+  id               String        @id @default(uuid()) @db.Uuid
+  organizationId   String        @map("organization_id") @db.Uuid
+  dataSourceId     String        @map("data_source_id") @db.Uuid
+  type             SyncJobType
+  status           SyncJobStatus @default(QUEUED)
+  rangeFrom        DateTime?     @map("range_from") @db.Timestamptz(6)
+  rangeTo          DateTime?     @map("range_to") @db.Timestamptz(6)
+  startedAt        DateTime?     @map("started_at") @db.Timestamptz(6)
+  completedAt      DateTime?     @map("completed_at") @db.Timestamptz(6)
+  recordsProcessed Int           @default(0) @map("records_processed")
+  errorMessage     String?       @map("error_message")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  dataSource   DataSource   @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([dataSourceId, createdAt])
+  @@map("sync_jobs")
+}
